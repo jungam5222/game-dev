@@ -14,6 +14,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;600&family=Song+Myung&display=swap">
 <style>
+/* 날아가는 낱말 색 (사용자 요청 2026-10-09): 가로등 어두운 회색, 인공위성 밝은 회색, 달 노랑, 혜성 파랑, 별 흰색.
+   밝은 달·별 그림 위에서도 읽히게 어두운 테두리 그림자를 깐다. */
 /* 밤하늘 한 장. 답을 적으면 낱말만 떼어 내 하늘로 띄운다 (가로등 → 인공위성 → 달 → 혜성 → 별).
    단계 색: 가로등 나트륨 주황, 인공위성 청록, 달 달빛, 혜성 푸른 빛, 별 금빛. 금빛은 별과 누를 버튼에만 쓴다. */
 :root {
@@ -126,12 +128,12 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .flyer .fwhy { max-width: 24em; font-size: 14px; line-height: 1.5; color: var(--dim); text-wrap: balance; opacity: 0; transition: opacity .45s; text-shadow: 0 1px 8px rgba(3, 4, 12, .9); }
 .flyer.phr .phrase, .flyer.phr .fwhy { opacity: 1; }
 .flyer.arr .tag { opacity: 1; transform: none; }
-.flyer.s100 .word { color: var(--gold); text-shadow: 0 0 16px rgba(242, 207, 115, .85), 0 0 44px rgba(242, 207, 115, .45); animation: shine 1.8s ease-in-out infinite; }
+.flyer.s100 .word { color: #ffffff; text-shadow: 0 0 16px rgba(255, 255, 255, .8), 0 0 44px rgba(242, 207, 115, .5); animation: shine 1.8s ease-in-out infinite; }
 @keyframes shine { 50% { text-shadow: 0 0 24px rgba(255, 228, 150, 1), 0 0 70px rgba(242, 207, 115, .7); } }
-.flyer.s85 .word { color: #eef4ff; text-shadow: 0 0 14px rgba(156, 194, 255, .75); }
-.flyer.s60 .word { color: #fffaf0; text-shadow: 0 0 14px rgba(255, 241, 201, .5); }
-.flyer.s30 .word { text-shadow: 0 0 10px rgba(143, 208, 198, .35); }
-.flyer.s10 .word { color: #fff3e6; text-shadow: 0 0 14px rgba(240, 163, 94, .6); }
+.flyer.s85 .word { color: #7fb2ff; text-shadow: 0 0 3px rgba(3, 4, 12, .9), 0 0 14px rgba(156, 194, 255, .55); }
+.flyer.s60 .word { color: #ffd23f; text-shadow: 0 0 3px rgba(3, 4, 12, .95), 0 0 10px rgba(3, 4, 12, .7); }
+.flyer.s30 .word { color: #d6d9e4; text-shadow: 0 0 3px rgba(3, 4, 12, .8), 0 0 10px rgba(143, 208, 198, .3); }
+.flyer.s10 .word { color: #8a8d99; text-shadow: 0 0 3px rgba(3, 4, 12, .8), 0 0 12px rgba(240, 163, 94, .35); }
 .flyer.s0.arr .word { color: var(--dim); opacity: .7; }
 .flyer.none .word { font-size: clamp(24px, 7vw, 30px); color: var(--dim); }
 .stagebar { position: absolute; left: 0; right: 0; bottom: 0; display: flex; justify-content: center; padding: 16px 16px calc(22px + env(safe-area-inset-bottom, 0px)); opacity: 0; pointer-events: none; transition: opacity .35s; }
