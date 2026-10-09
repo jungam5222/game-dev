@@ -1,1 +1,3 @@
-/ /krillion_kr/ 302
+/ /starvest/ 302
+/krillion_kr /starvest/ 301
+/krillion_kr/* /starvest/ 301
