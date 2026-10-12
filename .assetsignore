@@ -1,3 +1,9 @@
 .git
 wrangler.jsonc
 README.md
+worker.js
+node_modules
+package.json
+package-lock.json
+.wrangler
+.gitignore
