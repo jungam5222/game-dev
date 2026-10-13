@@ -4,7 +4,7 @@
 //   board "d:2026-10-16" = 그날의 문제, "s:3" = 추가 플레이 3세트
 // 정답은 게임 페이지에 넣지 않고 여기서 채점한다 (/api/judge, /api/list). F12로 정답이 보이지 않게.
 //   server/answers.bin(gzip JSON)과 server/matcher.js는 make_game.py --web이 만든다. server/는 공개 파일이 아니다.
-// 목록에 없는 답은 Claude(Haiku)에게 맞는 답인지와 한국에서 얼마나 흔한 말인지 물어 점수를 준다 (2026-10-13 사용자 요청).
+// 목록에 없는 답은 Claude(Sonnet)에게 맞는 답인지와 한국에서 얼마나 흔한 말인지 물어 점수를 준다 (2026-10-13 사용자 요청).
 //   키는 Cloudflare 대시보드의 Worker 비밀값 ANTHROPIC_API_KEY. 없으면 묻지 않고 지금처럼 '목록에 없는 답'으로 둔다.
 //   같은 문제·같은 답은 처음 판정을 저장해 두고 모두에게 같은 결과를 준다. 맞다고 한 새 답은 GET /api/found로 모아 본다.
 import { DurableObject } from "cloudflare:workers";
@@ -16,9 +16,10 @@ const BOARD = /^(d:\d{4}-\d{2}-\d{2}|s:[1-9]\d?)$/;
 const PLAYER = /^[A-Za-z0-9_-]{8,40}$/;
 const DAY = 86400e3;
 const PER_IP = 20; // 한 판에 같은 곳(IP)에서 새로 받을 기록 수
-const CLAUDE_MODEL = "claude-haiku-5-5";
-const CLAUDE_PER_DAY = 2000; // 하루(한국 날짜)에 Claude에게 묻는 최대 횟수. 한 번에 1원 안쪽
-const CLAUDE_PER_IP = 100; // 같은 곳(IP)에서 하루에 묻는 최대 횟수
+// 2026-10-13 사용자: Max 요금제의 월 100달러 크레딧이 있어 넉넉히 써도 됨 → Haiku 대신 Sonnet.
+const CLAUDE_MODEL = "claude-sonnet-5-5";
+const CLAUDE_PER_DAY = 300; // 하루(한국 날짜)에 Claude에게 묻는 최대 횟수. 한 번에 1센트 안팎이라 다 써도 하루 3달러쯤
+const CLAUDE_PER_IP = 60; // 같은 곳(IP)에서 하루에 묻는 최대 횟수
 const FAM_SCORE = { 5: 10, 4: 30, 3: 60, 2: 85, 1: 100 }; // build.py score_freq와 같은 기준
 
 export class Board extends DurableObject {
@@ -160,7 +161,10 @@ function promptFor(entry, raw) {
 async function askClaude(env, entry, raw) {
   // ANTHROPIC_BASE_URL은 로컬 시험용 (가짜 Claude 서버). 실제 배포에선 비워 둔다.
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, baseURL: env.ANTHROPIC_BASE_URL || undefined, timeout: 20000, maxRetries: 1 });
-  const res = await client.messages.create({
+  // fallbacks "default": 안전 분류기가 거절하면 서버가 알맞은 다른 모델로 다시 돌린다
+  const res = await client.beta.messages.create({
+    betas: ["server-side-fallback-2026-07-01"],
+    fallbacks: "default",
     model: CLAUDE_MODEL,
     max_tokens: 4000,
     output_config: { effort: "low", format: { type: "json_schema", schema: VERDICT } },

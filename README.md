@@ -10,8 +10,8 @@ krillion.io can only be played in English. This is an app for playing in Korean.
 - `index.html`, `_redirects`: 지금은 게임이 하나라 game.yunmin.dev로 들어오면 `/starvest/`로 보낸다 (302).
   게임이 늘면 두 파일을 게임 목록으로 바꾼다.
 - `worker.js`: 채점·순위 서버. `/api/judge`(답 하나 채점), `/api/list`(다 푼 뒤 정답 목록), `/api/score`(순위)를 받고 나머지는 정적 파일로 나간다.
-  목록에 없는 답은 Claude Haiku에게 맞는 답인지와 한국에서 얼마나 흔한 말인지 물어 점수를 준다 (`@anthropic-ai/sdk`, package.json).
+  목록에 없는 답은 Claude Sonnet(처음엔 Haiku, 2026-10-13 사용자가 넉넉히 써도 된다고 해서 바꿈)에게 맞는 답인지와 한국에서 얼마나 흔한 말인지 물어 점수를 준다 (`@anthropic-ai/sdk`, package.json).
   키는 Cloudflare 대시보드 Worker 설정의 비밀값 `ANTHROPIC_API_KEY` (저장소에 넣지 않는다). 키가 없으면 묻지 않고 '목록에 없는 답'으로 둔다.
-  같은 문제·같은 답은 처음 판정을 저장해 모두에게 같은 점수를 준다. 하루 2000번, 같은 IP 하루 100번까지 (worker.js 맨 위 숫자).
+  같은 문제·같은 답은 처음 판정을 저장해 모두에게 같은 점수를 준다. 하루 300번(다 써도 하루 3달러쯤), 같은 IP 하루 60번까지 (worker.js 맨 위 숫자).
   `GET /api/found`: Claude가 인정한 새 답 목록과 날짜별 호출 수 (정답 목록에 넣을 후보). 점수는 Durable Object(SQLite) `Board`에
   판(그날의 문제 `d:날짜`, 추가 플레이 `s:세트번호`)마다 플레이어당 첫 기록만 모아 'N명 중 M등'을 돌려준다.
