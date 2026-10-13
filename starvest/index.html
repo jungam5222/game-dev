@@ -1307,13 +1307,13 @@ function makeMatcher(answers, suffixes, rejected) {
     $("today").innerHTML = `<p class="date">${d.label}의 하늘</p>` + (done
       ? `<p class="state">오늘의 일곱 문제에서 <b>${done.total}점</b>을 땄어요.</p>`
       : `<p class="state">오늘의 일곱 문제가 떠 있어요.</p>`);
-    $("primary").textContent = done ? `추가 플레이 (${SETS.length}세트)` : "오늘의 문제 시작";
+    $("primary").textContent = done ? "추가 플레이" : "오늘의 문제 시작";
     $("primary").dataset.act = done ? "sets" : "daily";
-    $("secondary").textContent = done ? "오늘 결과 다시 보기" : `추가 플레이 (${SETS.length}세트)`;
+    $("secondary").textContent = done ? "오늘 결과 다시 보기" : "추가 플레이";
     $("secondary").dataset.act = done ? "review" : "sets";
     $("secondary").hidden = !done && !SETS.length;
     $("pastBtn").hidden = today() < 1;
-    $("pastBtn").textContent = `과거 일일 플레이 (${Math.max(0, today())}일)`;
+    $("pastBtn").textContent = "과거 일일 플레이";
   }
   function onIntro(e) {
     const act = e.currentTarget.dataset.act;
