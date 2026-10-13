@@ -18,8 +18,13 @@ const DAY = 86400e3;
 const PER_IP = 20; // 한 판에 같은 곳(IP)에서 새로 받을 기록 수
 // 2026-10-13 사용자: Max 요금제의 월 100달러 크레딧이 있어 넉넉히 써도 됨 → Haiku 대신 Sonnet.
 const CLAUDE_MODEL = "claude-sonnet-5-5";
-const CLAUDE_PER_DAY = 300; // 하루(한국 날짜)에 Claude에게 묻는 최대 횟수. 한 번에 1센트 안팎이라 다 써도 하루 3달러쯤
+// 같은 날 사용자: 한 달 50달러 수준으로. 응답의 토큰 수로 실제 쓴 돈을 세어 넘으면 묻지 않는다 (한국 날짜·달 기준).
+const MONTH_BUDGET_USD = 50;
+const DAY_BUDGET_USD = 2.5; // 하루에 몰려서 한 달 몫을 다 쓰지 않게
 const CLAUDE_PER_IP = 60; // 같은 곳(IP)에서 하루에 묻는 최대 횟수
+// 100만 토큰당 [입력, 출력] 달러. 거절돼 다른 모델로 넘어간 경우를 생각해 모르는 모델은 비싸게 셈
+const PRICE = { "claude-sonnet-5-5": [2, 10], "claude-opus-5-5": [4, 20] };
+const PRICE_UNKNOWN = [5, 25];
 const FAM_SCORE = { 5: 10, 4: 30, 3: 60, 2: 85, 1: 100 }; // build.py score_freq와 같은 기준
 
 export class Board extends DurableObject {
@@ -33,6 +38,7 @@ export class Board extends DurableObject {
       prompt TEXT NOT NULL, answer TEXT NOT NULL, raw TEXT NOT NULL, result TEXT NOT NULL, at INTEGER NOT NULL, hits INTEGER NOT NULL DEFAULT 1,
       PRIMARY KEY (prompt, answer))`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS claude_use (day TEXT NOT NULL, ip TEXT NOT NULL, n INTEGER NOT NULL, PRIMARY KEY (day, ip))`);
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS claude_cost (day TEXT PRIMARY KEY, usd REAL NOT NULL)`);
   }
 
   // 목록 밖 답: 저장해 둔 판정
@@ -45,23 +51,30 @@ export class Board extends DurableObject {
   putCheck(prompt, answer, raw, result) {
     this.sql.exec("INSERT OR IGNORE INTO checks (prompt, answer, raw, result, at) VALUES (?, ?, ?, ?, ?)", prompt, answer, raw, JSON.stringify(result), Date.now());
   }
-  // 하루 한도 안이면 한 번 쓴 것으로 세고 true
+  // 하루·한 달 예산과 IP 한도 안이면 한 번 쓴 것으로 세고 true
   reserve(day, ip) {
-    const total = this.sql.exec("SELECT COALESCE(SUM(n), 0) AS n FROM claude_use WHERE day = ?", day).one().n;
+    const spent = (where, arg) => this.sql.exec(`SELECT COALESCE(SUM(usd), 0) AS usd FROM claude_cost WHERE ${where}`, arg).one().usd;
+    if (spent("day = ?", day) >= DAY_BUDGET_USD || spent("substr(day, 1, 7) = ?", day.slice(0, 7)) >= MONTH_BUDGET_USD) return false;
     const mine = this.sql.exec("SELECT COALESCE(SUM(n), 0) AS n FROM claude_use WHERE day = ? AND ip = ?", day, ip).one().n;
-    if (total >= CLAUDE_PER_DAY || mine >= CLAUDE_PER_IP) return false;
+    if (mine >= CLAUDE_PER_IP) return false;
     this.sql.exec("INSERT INTO claude_use (day, ip, n) VALUES (?, ?, 1) ON CONFLICT (day, ip) DO UPDATE SET n = n + 1", day, ip);
     return true;
+  }
+  addCost(day, usd) {
+    this.sql.exec("INSERT INTO claude_cost (day, usd) VALUES (?, ?) ON CONFLICT (day) DO UPDATE SET usd = usd + excluded.usd", day, usd);
   }
   // 새로 인정된 답 모아 보기 (정답 목록에 넣을 후보)
   found() {
     const rows = this.sql.exec("SELECT prompt, raw, result, at, hits FROM checks ORDER BY prompt, at").toArray();
     const use = this.sql.exec("SELECT day, SUM(n) AS n FROM claude_use GROUP BY day ORDER BY day DESC LIMIT 14").toArray();
+    const cost = this.sql.exec("SELECT substr(day, 1, 7) AS month, ROUND(SUM(usd), 3) AS usd FROM claude_cost GROUP BY month ORDER BY month DESC LIMIT 6").toArray();
     return {
       found: rows.map((r) => ({ prompt: r.prompt, raw: r.raw, at: new Date(r.at).toISOString(), hits: r.hits, ...JSON.parse(r.result) }))
         .filter((r) => r.kind === "new" || r.kind === "ok"),
       rejected: rows.filter((r) => JSON.parse(r.result).kind === "rejected").length,
       calls: Object.fromEntries(use.map((u) => [u.day, u.n])),
+      usd: Object.fromEntries(cost.map((c) => [c.month, c.usd])),
+      budget: { month: MONTH_BUDGET_USD, day: DAY_BUDGET_USD },
     };
   }
 
@@ -170,9 +183,23 @@ async function askClaude(env, entry, raw) {
     output_config: { effort: "low", format: { type: "json_schema", schema: VERDICT } },
     messages: [{ role: "user", content: promptFor(entry, raw) }],
   });
-  if (res.stop_reason !== "end_turn") return null; // refusal, max_tokens 등은 판정하지 않음
+  const cost = costOf(res);
+  if (res.stop_reason !== "end_turn") return { v: null, cost }; // refusal, max_tokens 등은 판정하지 않음
   const text = res.content.filter((b) => b.type === "text").map((b) => b.text).join("");
-  try { return JSON.parse(text); } catch (e) { return null; }
+  try { return { v: JSON.parse(text), cost }; } catch (e) { return { v: null, cost }; }
+}
+
+// 응답의 토큰 수로 이번 호출에 든 돈(달러). 다른 모델로 넘어갔으면 시도마다 따로 센다.
+function costOf(res) {
+  const u = res.usage || {};
+  const parts = Array.isArray(u.iterations) && u.iterations.length ? u.iterations : [u];
+  let usd = 0;
+  for (const it of parts) {
+    const [pin, pout] = PRICE[it.model || res.model] || PRICE_UNKNOWN;
+    const inTok = (it.input_tokens || 0) + (it.cache_creation_input_tokens || 0) + (it.cache_read_input_tokens || 0);
+    usd += (inTok * pin + (it.output_tokens || 0) * pout) / 1e6;
+  }
+  return usd;
 }
 
 // Claude의 판정을 게임 결과로 바꾼다 (template.html의 fromClaude와 같은 규칙)
@@ -207,7 +234,11 @@ async function checkOffList(env, request, id, entry, raw) {
   if (saved) return saved;
   if (!(await stub.reserve(kstDay(), await ipKey(request)))) return null;
   let v = null;
-  try { v = await askClaude(env, entry, raw); } catch (e) { console.log("claude error", String(e)); }
+  try {
+    const out = await askClaude(env, entry, raw);
+    v = out.v;
+    await stub.addCost(kstDay(), out.cost);
+  } catch (e) { console.log("claude error", String(e)); }
   if (!v) return null;
   const result = fromVerdict(id, entry, raw, v);
   await stub.putCheck(id, key, raw, result);
