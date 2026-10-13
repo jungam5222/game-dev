@@ -7,6 +7,8 @@
 // 목록에 없는 답은 Claude(Sonnet)에게 맞는 답인지와 한국에서 얼마나 흔한 말인지 물어 점수를 준다 (2026-10-13 사용자 요청).
 //   키는 Cloudflare 대시보드의 Worker 비밀값 ANTHROPIC_API_KEY. 없으면 묻지 않고 지금처럼 '목록에 없는 답'으로 둔다.
 //   같은 문제·같은 답은 처음 판정을 저장해 두고 모두에게 같은 결과를 준다. 맞다고 한 새 답은 GET /api/found로 모아 본다.
+//   Claude 호출은 미국 서부에 만든 Durable Object("claude-wnam") 안에서 한다. 한국 요청이 Cloudflare 홍콩 등
+//   Anthropic이 지원하지 않는 지역의 데이터센터에서 돌면 403 "Request not allowed"로 막혔기 때문 (2026-10-13).
 import { DurableObject } from "cloudflare:workers";
 import Anthropic from "@anthropic-ai/sdk";
 import ANSWERS_GZ from "./server/answers.bin";
@@ -61,6 +63,23 @@ export class Board extends DurableObject {
     this.sql.exec("INSERT INTO claude_use (day, ip, n) VALUES (?, ?, 1) ON CONFLICT (day, ip) DO UPDATE SET n = n + 1", day, ip);
     return true;
   }
+  // Claude 호출 (claude-wnam 객체에서만 부른다). 오류는 던지지 않고 error로 돌려준다.
+  async claude(entry, raw) {
+    try {
+      return await askClaude(this.env, entry, raw);
+    } catch (e) {
+      return { v: null, cost: 0, error: String(e).slice(0, 400) };
+    }
+  }
+  // 이 객체가 도는 Cloudflare 데이터센터 (확인용)
+  async colo() {
+    try {
+      const t = await (await fetch("https://www.cloudflare.com/cdn-cgi/trace")).text();
+      return (/colo=(\w+)/.exec(t) || [])[1] || "";
+    } catch (e) {
+      return "";
+    }
+  }
   getMeta(k) {
     const row = this.sql.exec("SELECT v FROM meta WHERE k = ?", k).toArray()[0];
     return row ? JSON.parse(row.v) : null;
@@ -83,6 +102,7 @@ export class Board extends DurableObject {
       calls: Object.fromEntries(use.map((u) => [u.day, u.n])),
       usd: Object.fromEntries(cost.map((c) => [c.month, c.usd])),
       budget: { month: MONTH_BUDGET_USD, day: DAY_BUDGET_USD },
+      lastCall: this.getMeta("last_call"),
       lastError: this.getMeta("last_error"),
     };
   }
@@ -231,18 +251,24 @@ function fromVerdict(id, entry, raw, v) {
   return { score: 0, kind: "rejected", why: text(v.why) || "이 문제의 답으로 보기 어려워요.", via: "claude" };
 }
 
+// Claude를 부르는 객체: 처음 만들 때 미국 서부(wnam)에 놓이고 그 뒤로 거기서만 돈다
+const claudeStub = (env) => env.BOARD.get(env.BOARD.idFromName("claude-wnam"), { locationHint: "wnam" });
+
 // 키가 제대로 도는지 한 번 물어 본다 (GET /api/selftest). 10분에 한 번만 실제로 묻고, 그 사이에는 지난 결과를 돌려준다.
-async function selfTest(env) {
+const SELFTEST_VERSION = 2; // 호출 방식을 바꾸면 올려서 바로 다시 시험
+async function selfTest(env, request) {
   if (!env.ANTHROPIC_API_KEY) return { claude: false };
   const stub = env.BOARD.get(env.BOARD.idFromName("main"));
   const last = await stub.getMeta("selftest");
-  if (last && Date.now() - Date.parse(last.at) < 10 * 60e3) return { cached: true, ...last };
+  if (last && last.version === SELFTEST_VERSION && Date.now() - Date.parse(last.at) < 10 * 60e3) return { cached: true, ...last };
   const all = await answers();
-  const out = { at: new Date().toISOString(), model: CLAUDE_MODEL, question: "탄산음료 이름 / 사이다맛 탄산수" };
+  const cs = claudeStub(env);
+  const out = { version: SELFTEST_VERSION, at: new Date().toISOString(), model: CLAUDE_MODEL, question: "탄산음료 이름 / 사이다맛 탄산수",
+    requestColo: (request.cf && request.cf.colo) || "", claudeColo: await cs.colo() };
   try {
-    const r = await askClaude(env, all.soda, "사이다맛 탄산수");
-    await stub.addCost(kstDay(), r.cost);
-    Object.assign(out, { ok: !!r.v, verdict: r.v, usd: Math.round(r.cost * 1e5) / 1e5 });
+    const r = await cs.claude(all.soda, "사이다맛 탄산수");
+    await stub.addCost(kstDay(), r.cost || 0);
+    Object.assign(out, { ok: !!r.v, verdict: r.v, usd: Math.round((r.cost || 0) * 1e5) / 1e5, error: r.error });
   } catch (e) {
     Object.assign(out, { ok: false, error: String(e).slice(0, 400) });
   }
@@ -252,7 +278,8 @@ async function selfTest(env) {
 
 const kstDay = () => new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
 
-// 목록 밖 답 판정. 물어볼 수 없으면 null.
+// 목록 밖 답 판정. 물어보지 않는 경우(키 없음, 너무 짧은 답)는 null.
+// 물어보려 했는데 못 했으면 '목록에 없는 답'과 함께 그 이유(why)를 돌려준다.
 async function checkOffList(env, request, id, entry, raw) {
   if (!env.ANTHROPIC_API_KEY) return null;
   const key = norm(raw);
@@ -260,18 +287,22 @@ async function checkOffList(env, request, id, entry, raw) {
   const stub = env.BOARD.get(env.BOARD.idFromName("main"));
   const saved = await stub.getCheck(id, key);
   if (saved) return saved;
-  if (!(await stub.reserve(kstDay(), await ipKey(request)))) return null;
-  let v = null;
+  const failed = (why) => ({ score: 0, kind: "unknown", why });
+  if (!(await stub.reserve(kstDay(), await ipKey(request)))) return failed("오늘은 Claude 확인 한도를 다 써서 확인하지 못했어요.");
+  const started = Date.now();
+  let out;
   try {
-    const out = await askClaude(env, entry, raw);
-    v = out.v;
-    await stub.addCost(kstDay(), out.cost);
+    out = await claudeStub(env).claude(entry, raw);
   } catch (e) {
-    console.log("claude error", String(e));
-    await stub.setMeta("last_error", { at: new Date().toISOString(), error: String(e).slice(0, 400) });
+    out = { v: null, cost: 0, error: String(e).slice(0, 400) };
   }
-  if (!v) return null;
-  const result = fromVerdict(id, entry, raw, v);
+  const call = { at: new Date().toISOString(), colo: (request.cf && request.cf.colo) || "", ms: Date.now() - started, ok: !!out.v };
+  if (out.error) call.error = out.error;
+  await stub.setMeta("last_call", call);
+  if (out.error) await stub.setMeta("last_error", call);
+  if (out.cost) await stub.addCost(kstDay(), out.cost);
+  if (!out.v) return failed("지금은 Claude 확인이 안 돼서 확인하지 못했어요.");
+  const result = fromVerdict(id, entry, raw, out.v);
   await stub.putCheck(id, key, raw, result);
   return result;
 }
@@ -302,7 +333,7 @@ export default {
     if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(request);
     if (!["/api/score", "/api/judge", "/api/list", "/api/found", "/api/status", "/api/selftest"].includes(url.pathname)) return json({ error: "not_found" }, 404);
     if (url.pathname === "/api/status") return json({ claude: !!env.ANTHROPIC_API_KEY });
-    if (url.pathname === "/api/selftest") return json(await selfTest(env));
+    if (url.pathname === "/api/selftest") return json(await selfTest(env, request));
     if (url.pathname === "/api/found" && request.method === "GET") return json(await env.BOARD.get(env.BOARD.idFromName("main")).found());
     if (request.method !== "POST") return json({ error: "method" }, 405);
     const body = await readJson(request);

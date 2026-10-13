@@ -1455,7 +1455,7 @@ function makeMatcher(answers, suffixes, rejected) {
     const head = `‘${value}’${josa(value, "은", "는")} `;
     const msg = r.via === "claude" && r.kind === "rejected" ? head + "인정하기 어려워요. " + sentence(r.why)
       : r.kind === "rejected" ? head + "인정하지 않는 답이에요. " + sentence(r.why)
-      : head + "목록에 없는 답이에요.";
+      : head + "목록에 없는 답이에요." + (r.why ? " " + sentence(r.why) : "");
     setWarn(msg + " 다른 답을 적어 보세요.", "retry");
     // 확인하는 사이에 새 답을 적기 시작했으면 지우지 않는다
     if (input.value.replace(/\s+/g, " ").trim() === value) {

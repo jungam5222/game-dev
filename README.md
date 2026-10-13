@@ -14,4 +14,6 @@ krillion.io can only be played in English. This is an app for playing in Korean.
   키는 Cloudflare 대시보드 Worker 설정의 비밀값 `ANTHROPIC_API_KEY` (저장소에 넣지 않는다). 키가 없으면 묻지 않고 '목록에 없는 답'으로 둔다.
   같은 문제·같은 답은 처음 판정을 저장해 모두에게 같은 점수를 준다. 응답의 토큰 수로 쓴 돈을 세어 한 달 50달러·하루 2.5달러를 넘으면 묻지 않는다. 같은 IP 하루 60번까지 (worker.js 맨 위 숫자).
   `GET /api/found`: Claude가 인정한 새 답 목록, 날짜별 호출 수, 달별 쓴 돈 (정답 목록에 넣을 후보).
+  Claude 호출은 미국 서부에 만든 Durable Object(`claude-wnam`, locationHint wnam)에서 한다. 한국 요청이 홍콩 등 Anthropic 미지원 지역
+  데이터센터에서 처리되면 403 "Request not allowed"로 막혔기 때문 (2026-10-13). `GET /api/selftest`로 키·호출 시험(10분에 한 번), `/api/found`의 lastCall·lastError에 요청 데이터센터(colo)가 남는다.
   순위: 점수는 Durable Object(SQLite) `Board`에 판(그날의 문제 `d:날짜`, 추가 플레이 `s:세트번호`)마다 플레이어당 첫 기록만 모아 'N명 중 M등'을 돌려준다.
