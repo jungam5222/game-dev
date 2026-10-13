@@ -39,6 +39,7 @@ export class Board extends DurableObject {
       PRIMARY KEY (prompt, answer))`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS claude_use (day TEXT NOT NULL, ip TEXT NOT NULL, n INTEGER NOT NULL, PRIMARY KEY (day, ip))`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS claude_cost (day TEXT PRIMARY KEY, usd REAL NOT NULL)`);
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT NOT NULL)`);
   }
 
   // 목록 밖 답: 저장해 둔 판정
@@ -60,6 +61,13 @@ export class Board extends DurableObject {
     this.sql.exec("INSERT INTO claude_use (day, ip, n) VALUES (?, ?, 1) ON CONFLICT (day, ip) DO UPDATE SET n = n + 1", day, ip);
     return true;
   }
+  getMeta(k) {
+    const row = this.sql.exec("SELECT v FROM meta WHERE k = ?", k).toArray()[0];
+    return row ? JSON.parse(row.v) : null;
+  }
+  setMeta(k, v) {
+    this.sql.exec("INSERT INTO meta (k, v) VALUES (?, ?) ON CONFLICT (k) DO UPDATE SET v = excluded.v", k, JSON.stringify(v));
+  }
   addCost(day, usd) {
     this.sql.exec("INSERT INTO claude_cost (day, usd) VALUES (?, ?) ON CONFLICT (day) DO UPDATE SET usd = usd + excluded.usd", day, usd);
   }
@@ -75,6 +83,7 @@ export class Board extends DurableObject {
       calls: Object.fromEntries(use.map((u) => [u.day, u.n])),
       usd: Object.fromEntries(cost.map((c) => [c.month, c.usd])),
       budget: { month: MONTH_BUDGET_USD, day: DAY_BUDGET_USD },
+      lastError: this.getMeta("last_error"),
     };
   }
 
@@ -222,6 +231,25 @@ function fromVerdict(id, entry, raw, v) {
   return { score: 0, kind: "rejected", why: text(v.why) || "이 문제의 답으로 보기 어려워요.", via: "claude" };
 }
 
+// 키가 제대로 도는지 한 번 물어 본다 (GET /api/selftest). 10분에 한 번만 실제로 묻고, 그 사이에는 지난 결과를 돌려준다.
+async function selfTest(env) {
+  if (!env.ANTHROPIC_API_KEY) return { claude: false };
+  const stub = env.BOARD.get(env.BOARD.idFromName("main"));
+  const last = await stub.getMeta("selftest");
+  if (last && Date.now() - Date.parse(last.at) < 10 * 60e3) return { cached: true, ...last };
+  const all = await answers();
+  const out = { at: new Date().toISOString(), model: CLAUDE_MODEL, question: "탄산음료 이름 / 사이다맛 탄산수" };
+  try {
+    const r = await askClaude(env, all.soda, "사이다맛 탄산수");
+    await stub.addCost(kstDay(), r.cost);
+    Object.assign(out, { ok: !!r.v, verdict: r.v, usd: Math.round(r.cost * 1e5) / 1e5 });
+  } catch (e) {
+    Object.assign(out, { ok: false, error: String(e).slice(0, 400) });
+  }
+  await stub.setMeta("selftest", out);
+  return out;
+}
+
 const kstDay = () => new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
 
 // 목록 밖 답 판정. 물어볼 수 없으면 null.
@@ -238,7 +266,10 @@ async function checkOffList(env, request, id, entry, raw) {
     const out = await askClaude(env, entry, raw);
     v = out.v;
     await stub.addCost(kstDay(), out.cost);
-  } catch (e) { console.log("claude error", String(e)); }
+  } catch (e) {
+    console.log("claude error", String(e));
+    await stub.setMeta("last_error", { at: new Date().toISOString(), error: String(e).slice(0, 400) });
+  }
   if (!v) return null;
   const result = fromVerdict(id, entry, raw, v);
   await stub.putCheck(id, key, raw, result);
@@ -269,8 +300,9 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(request);
-    if (!["/api/score", "/api/judge", "/api/list", "/api/found", "/api/status"].includes(url.pathname)) return json({ error: "not_found" }, 404);
+    if (!["/api/score", "/api/judge", "/api/list", "/api/found", "/api/status", "/api/selftest"].includes(url.pathname)) return json({ error: "not_found" }, 404);
     if (url.pathname === "/api/status") return json({ claude: !!env.ANTHROPIC_API_KEY });
+    if (url.pathname === "/api/selftest") return json(await selfTest(env));
     if (url.pathname === "/api/found" && request.method === "GET") return json(await env.BOARD.get(env.BOARD.idFromName("main")).found());
     if (request.method !== "POST") return json({ error: "method" }, 405);
     const body = await readJson(request);
