@@ -288,7 +288,7 @@ async function checkOffList(env, request, id, entry, raw) {
   const saved = await stub.getCheck(id, key);
   if (saved) return saved;
   const failed = (why) => ({ score: 0, kind: "unknown", why });
-  if (!(await stub.reserve(kstDay(), await ipKey(request)))) return failed("오늘은 Claude 확인 한도를 다 써서 확인하지 못했어요.");
+  if (!(await stub.reserve(kstDay(), await ipKey(request)))) return failed("오늘은 실시간 채점 한도를 다 써서 채점하지 못했어요.");
   const started = Date.now();
   let out;
   try {
@@ -301,7 +301,7 @@ async function checkOffList(env, request, id, entry, raw) {
   await stub.setMeta("last_call", call);
   if (out.error) await stub.setMeta("last_error", call);
   if (out.cost) await stub.addCost(kstDay(), out.cost);
-  if (!out.v) return failed("지금은 Claude 확인이 안 돼서 확인하지 못했어요.");
+  if (!out.v) return failed("지금은 실시간 채점이 안 돼서 채점하지 못했어요.");
   const result = fromVerdict(id, entry, raw, out.v);
   await stub.putCheck(id, key, raw, result);
   return result;
@@ -318,7 +318,8 @@ function dailyOk(board) {
   if (!board.startsWith("d:")) return true;
   const t = Date.parse(board.slice(2) + "T00:00:00+09:00");
   const now = Date.now();
-  return Number.isFinite(t) && t <= now + DAY && t >= now - 3 * DAY; // 한국 날짜로 사흘 전부터 내일까지
+  // 첫날(2026-10-08)부터 내일까지. 지난 날짜는 '과거 일일 플레이'로 그날 판에 같이 센다 (2026-10-13)
+  return Number.isFinite(t) && t <= now + DAY && t >= Date.parse("2026-10-08T00:00:00+09:00");
 }
 
 async function ipKey(request) {
