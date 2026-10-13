@@ -1,0 +1,8 @@
+{
+  "name": "game-dev",
+  "private": true,
+  "description": "game.yunmin.dev Worker (채점·순위 서버). 의존성은 worker.js가 쓰는 Anthropic SDK뿐.",
+  "dependencies": {
+    "@anthropic-ai/sdk": "0.133.0"
+  }
+}
