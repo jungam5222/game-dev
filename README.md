@@ -3,9 +3,11 @@ krillion.io can only be played in English. This is an app for playing in Korean.
 
 ## 구성
 
-- `starvest/index.html`: 하늘의 별따기 게임 (game.yunmin.dev/starvest/). 파일 하나에 문제·정답·점수가 다 들어 있다.
+- `starvest/index.html`: 하늘의 별따기 게임 (game.yunmin.dev/starvest/). 문제는 들어 있지만 정답은 없다 (F12로 보이지 않게).
   프로젝트 폴더 `korean-word-game/beta/`에서 `python3 -I game/make_game.py --web <이 파일>`로 만든다.
+  같은 명령이 `server/answers.bin`(정답·점수·오답, gzip JSON)과 `server/matcher.js`(채점 규칙)도 만든다.
+  `server/`는 `.assetsignore`로 공개 파일에서 빠지고 Worker 안에서만 쓴다.
 - `index.html`, `_redirects`: 지금은 게임이 하나라 game.yunmin.dev로 들어오면 `/starvest/`로 보낸다 (302).
   게임이 늘면 두 파일을 게임 목록으로 바꾼다.
-- `worker.js`: 순위 서버. `/api/score`만 받고 나머지는 정적 파일로 나간다. 점수는 Durable Object(SQLite) `Board`에
+- `worker.js`: 채점·순위 서버. `/api/judge`(답 하나 채점), `/api/list`(다 푼 뒤 정답 목록), `/api/score`(순위)를 받고 나머지는 정적 파일로 나간다. 점수는 Durable Object(SQLite) `Board`에
   판(그날의 문제 `d:날짜`, 추가 플레이 `s:세트번호`)마다 플레이어당 첫 기록만 모아 'N명 중 M등'을 돌려준다.
