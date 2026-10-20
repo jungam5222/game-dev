@@ -20,7 +20,7 @@ export function newRun(run, stage, heroes) {
   heroes.forEach((h, i) => {
     players[h.uid] = {
       uid: h.uid, name: h.name, cls: h.cls, level: h.level, ...h.stats, hp: h.stats.maxHp, deck: h.deck,
-      x: ROOM.spawnX + (i % 2) * 45, y: ROOM.midY - 90 + i * 60, d: 1, left: false, down: false,
+      x: ROOM.spawnX + (i % 2) * 45, y: ROOM.midY - 90 + i * 60, d: 3, left: false, down: false,
       hand: [], draw: [], disc: [], mana: 0, maxMana: 0, block: 0, dodgeBuff: 0, counter: 0, taunt: false, critBuff: 0,
       stun: false, stunned: false, ready: false, usedSkill: false, cd: {}, dots: [], pity: {},
       earned: { exp: 0, gold: 0, stone: 0 },

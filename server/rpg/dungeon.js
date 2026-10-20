@@ -129,7 +129,7 @@ export class RpgDungeon extends DurableObject {
       if (!Number.isFinite(x) || !Number.isFinite(y)) return;
       p.x = Math.max(0, Math.min(960, Math.round(x)));
       p.y = Math.max(0, Math.min(540, Math.round(y)));
-      p.d = m.d < 0 ? -1 : 1;
+      p.d = [0, 1, 2, 3].includes(m.d) ? m.d : 3;
       const s = JSON.stringify({ t: "mv", uid: p.uid, x: p.x, y: p.y, d: p.d });
       for (const o of this.sockets()) if (o !== ws) {
         try {

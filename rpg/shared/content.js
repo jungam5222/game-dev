@@ -30,6 +30,8 @@ export const expNeed = (lv) => 20 + 10 * (lv - 1);
 export const DECK_MIN = 10;
 export const deckSize = (lv) => (lv >= 30 ? 30 : lv >= 20 ? 25 : lv >= 10 ? 20 : 15);
 export const PARTY_MAX = 4;
+// 마을 크기 (픽셀 그림 단위, rpg/js/art/town.js와 같게)
+export const TOWN = { w: 640, h: 448, spawn: { x: 320, y: 248 } };
 export const BOSS_DAILY = 3; // 단계마다 하루 보스 보상 횟수 (한국 날짜)
 export const START_GOLD = 100;
 export const ROOM_REST = 0.25; // 방을 깰 때마다 최대 체력의 25% 회복

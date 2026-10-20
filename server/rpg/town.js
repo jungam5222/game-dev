@@ -2,10 +2,10 @@
 // WebSocket Hibernation: 사람마다 정보는 소켓 attachment에, 파티·초대·채팅 기록은 storage에 둔다.
 // 파티장이 던전에 들어가면 던전 Durable Object를 만들고 마을에 있는 파티원에게 'go'를 보낸다.
 import { DurableObject } from "cloudflare:workers";
-import { PARTY_MAX, STAGE_COUNT } from "../../rpg/shared/content.js";
+import { PARTY_MAX, STAGE_COUNT, TOWN } from "../../rpg/shared/content.js";
 import { ensure } from "./db.js";
 
-const SPAWN = { x: 800, y: 600 };
+const SPAWN = TOWN.spawn;
 const INVITE_MS = 60e3;
 
 export class RpgTown extends DurableObject {
@@ -20,7 +20,7 @@ export class RpgTown extends DurableObject {
     const h = (k) => decodeURIComponent(request.headers.get(k) || "");
     const me = {
       uid: Number(h("x-uid")), name: h("x-name"), cls: h("x-cls"), lv: Number(h("x-level")) || 1, max: Number(h("x-max")) || 0,
-      x: SPAWN.x + Math.round(Math.random() * 80 - 40), y: SPAWN.y + Math.round(Math.random() * 40 - 20), d: 1,
+      x: SPAWN.x + Math.round(Math.random() * 30 - 15), y: SPAWN.y + Math.round(Math.random() * 14 - 7), d: 0,
     };
     if (!me.uid) return new Response("bad", { status: 400 });
     // 같은 사람이 다른 창에서 다시 들어오면 앞 창을 닫는다
@@ -134,9 +134,9 @@ export class RpgTown extends DurableObject {
       const x = Number(m.x);
       const y = Number(m.y);
       if (!Number.isFinite(x) || !Number.isFinite(y)) return;
-      me.x = Math.max(0, Math.min(1600, Math.round(x)));
-      me.y = Math.max(0, Math.min(1000, Math.round(y)));
-      me.d = m.d < 0 ? -1 : 1;
+      me.x = Math.max(0, Math.min(TOWN.w, Math.round(x)));
+      me.y = Math.max(0, Math.min(TOWN.h, Math.round(y)));
+      me.d = [0, 1, 2, 3].includes(m.d) ? m.d : 0;
       ws.serializeAttachment(me);
       this.broadcast({ t: "mv", uid: me.uid, x: me.x, y: me.y, d: me.d }, ws);
       return;

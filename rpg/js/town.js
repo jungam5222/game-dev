@@ -1,41 +1,22 @@
 // 마을: WASD(휴대폰은 방향 패드나 누른 곳으로 걷기)로 다니고, 건물에 가서 E로 들어간다.
 // 다른 사람이 보이고, 누르거나 가까이 가서 E로 파티 초대. 파티장이 던전 입구에서 단계를 고르면 다 같이 들어간다.
+// 좌표는 모두 마을 그림 픽셀 단위(art/town.js). 화면에는 3배로 보인다.
 import { G, axis, setScene } from "./game.js";
 import { openSocket } from "./net.js";
-import { drawHero, drawBuilding, drawTree, drawGrass, drawPath, drawLabel } from "./draw.js";
-import { $, el, toast, chat, renderHud, setPrompt, showLayer, modalOpen, clsIcon, closeModal } from "./ui.js";
+import { drawHero, HERO_TOP, text, plate } from "./draw.js";
+import { TOWN_W, TOWN_H, PLACES, SPAWN, GATE_SPAWN as GATE, blocked, drawGround, objects, drawAbove } from "./art/town.js";
+import { $, el, toast, chat, renderHud, setPrompt, showLayer, modalOpen, clsIcon, closeModal, icon } from "./ui.js";
 import { openPanel } from "./panels.js";
 import { CLASSES, PARTY_MAX } from "../shared/content.js";
+import { PAL, oval } from "./pixel.js";
 
-const WORLD = { w: 1600, h: 1000 };
-const SPEED = 210;
-const BUILDINGS = [
-  { kind: "gate", name: "던전 입구", x: 690, y: 40, w: 220, h: 170, door: { x: 800, y: 228 }, panel: "stages" },
-  { kind: "smithy", name: "대장간", x: 190, y: 290, w: 210, h: 160, door: { x: 295, y: 470 }, panel: "smithy" },
-  { kind: "shop", name: "상점", x: 1200, y: 290, w: 210, h: 160, door: { x: 1305, y: 470 }, panel: "shop" },
-  { kind: "cards", name: "카드 보관소", x: 250, y: 690, w: 200, h: 160, door: { x: 350, y: 870 }, panel: "cards" },
-  { kind: "fountain", name: "", x: 740, y: 520, w: 120, h: 70 },
-];
-const TREES = [
-  [60, 120], [140, 60], [520, 90], [600, 160], [1000, 150], [1080, 80], [1460, 110], [1540, 200], [60, 520], [110, 640], [1520, 560],
-  [1470, 700], [620, 900], [720, 960], [980, 920], [1120, 980], [1400, 920], [1560, 960], [40, 940], [560, 640], [1060, 660], [1180, 760],
-];
-const PATHS = [
-  [[800, 228], [800, 560], [800, 960]],
-  [[295, 470], [520, 560], [800, 560], [1080, 560], [1305, 470]],
-  [[350, 870], [560, 760], [800, 640]],
-];
-const solids = () => [...BUILDINGS.map((b) => ({ x: b.x + 6, y: b.y + (b.kind === "fountain" ? 6 : 30), w: b.w - 12, h: b.h - (b.kind === "fountain" ? 6 : 34) })), ...TREES.map(([x, y]) => ({ x: x - 10, y: y - 8, w: 20, h: 10 }))];
-
-function blocked(x, y, S) {
-  if (x < 16 || y < 30 || x > WORLD.w - 16 || y > WORLD.h - 8) return true;
-  for (const r of S) if (x + 10 > r.x && x - 10 < r.x + r.w && y > r.y && y - 8 < r.y + r.h) return true;
-  return false;
-}
+const SPEED = 72;
+const DIRS = ["down", "up", "left", "right"];
+const dirOf = (ax, ay, d) => (Math.abs(ax) > Math.abs(ay) + 0.01 ? (ax < 0 ? 2 : 3) : ay ? (ay < 0 ? 1 : 0) : d);
 
 export function townScene(spawn) {
-  const S = solids();
-  const me = { x: spawn ? spawn.x : 800 + Math.random() * 60 - 30, y: spawn ? spawn.y : 640, d: 1, walking: false };
+  const me = { x: (spawn || SPAWN).x + Math.round(Math.random() * 16 - 8), y: (spawn || SPAWN).y + Math.round(Math.random() * 6 - 3), d: spawn ? 0 : 0, walking: false };
+  if (blocked(me.x, me.y)) Object.assign(me, spawn || SPAWN);
   const others = new Map();
   let target = null; // 누른 곳으로 걷기 {x, y, then}
   let sock = null;
@@ -69,7 +50,7 @@ export function townScene(spawn) {
           el(
             "div.m" + (m.online ? "" : ".off"),
             {},
-            party.leader === m.uid ? "👑" : clsIcon(m.cls),
+            party.leader === m.uid ? icon("crown") : clsIcon(m.cls),
             el("span", {}, m.name),
             el("span.k", {}, `Lv ${m.lv}${m.online ? "" : " · 자리 비움"}`),
             lead && m.uid !== G.me.id ? el("button", { title: "내보내기", on: { click: () => ctx.send({ t: "kick", uid: m.uid }) } }, "✕") : null,
@@ -96,10 +77,10 @@ export function townScene(spawn) {
 
   function announce(text) {
     const box = $("#ann");
-    const d = el("div", {}, "📣 " + text);
+    const d = el("div", {}, icon("taunt"), text);
     box.append(d);
     setTimeout(() => d.remove(), 7000);
-    chat.add({ sys: true, text: "📣 " + text });
+    chat.add({ sys: true, text });
   }
 
   function closeMenu() {
@@ -200,17 +181,18 @@ export function townScene(spawn) {
     tap(x, y) {
       closeMenu();
       if (modalOpen()) return;
-      const wx = x + cam.x;
-      const wy = y + cam.y;
+      const wx = x / G.S + cam.x;
+      const wy = y / G.S + cam.y;
       for (const o of others.values()) {
-        if (Math.abs(o.x - wx) < 22 && wy < o.y + 8 && wy > o.y - 70) {
+        if (Math.abs(o.x - wx) < 8 && wy < o.y + 3 && wy > o.y - HERO_TOP) {
           const r = $("#cv").getBoundingClientRect();
-          playerMenu(o, r.left + ((o.x - cam.x) / G.W) * r.width, r.top + ((o.y - 78 - cam.y) / G.H) * r.height);
+          playerMenu(o, r.left + (((o.x - cam.x) * G.S) / G.W) * r.width, r.top + (((o.y - HERO_TOP - 6 - cam.y) * G.S) / G.H) * r.height);
           return;
         }
       }
-      for (const b of BUILDINGS) {
-        if (b.panel && wx > b.x && wx < b.x + b.w && wy > b.y && wy < b.y + b.h + 20) {
+      for (const b of PLACES) {
+        const a = b.tap;
+        if (wx > a.x && wx < a.x + a.w && wy > a.y && wy < a.y + a.h) {
           target = { x: b.door.x, y: b.door.y, then: b };
           return;
         }
@@ -224,7 +206,7 @@ export function townScene(spawn) {
         const dx = target.x - me.x;
         const dy = target.y - me.y;
         const dist = Math.hypot(dx, dy);
-        if (dist < 6) {
+        if (dist < 2) {
           if (target.then) openPanel(target.then.panel, ctx);
           target = null;
         } else {
@@ -233,15 +215,15 @@ export function townScene(spawn) {
         }
       }
       me.walking = !!(ax || ay);
-      if (ax) me.d = ax < 0 ? -1 : 1;
+      me.d = dirOf(ax, ay, me.d);
       const nx = me.x + ax * SPEED * dt;
       const ny = me.y + ay * SPEED * dt;
       let moved = false;
-      if (!blocked(nx, me.y, S)) {
+      if (!blocked(nx, me.y)) {
         me.x = nx;
         moved = moved || !!ax;
       }
-      if (!blocked(me.x, ny, S)) {
+      if (!blocked(me.x, ny)) {
         me.y = ny;
         moved = moved || !!ay;
       }
@@ -259,20 +241,21 @@ export function townScene(spawn) {
         const dy = o.ty - o.y;
         const dist = Math.hypot(dx, dy);
         const step = Math.max(SPEED * 1.15, dist * 4) * dt;
-        if (dist > 400) {
+        if (dist > 130) {
           o.x = o.tx;
           o.y = o.ty;
         } else if (dist > 0.5) {
           o.x += (dx / dist) * Math.min(dist, step);
           o.y += (dy / dist) * Math.min(dist, step);
         }
-        o.walking = dist > 2;
+        o.walking = dist > 0.7;
+        if (o.walking) o.face = dirOf(dx, dy, o.face);
+        else if (o.d != null) o.face = o.d;
       }
       // 가까운 건물 문 / 사람
       near = null;
-      let best = 85;
-      for (const b of BUILDINGS) {
-        if (!b.panel) continue;
+      let best = 22;
+      for (const b of PLACES) {
         const dd = Math.hypot(b.door.x - me.x, b.door.y - me.y);
         if (dd < best) {
           best = dd;
@@ -280,7 +263,7 @@ export function townScene(spawn) {
         }
       }
       if (!near) {
-        let bp = 60;
+        let bp = 20;
         for (const o of others.values()) {
           const dd = Math.hypot(o.x - me.x, o.y - me.y);
           if (dd < bp && !(party && party.members.some((m) => m.uid === o.uid))) {
@@ -293,53 +276,41 @@ export function townScene(spawn) {
       else if (near && near.b) setPrompt(`${near.b.name} 들어가기`, interact);
       else if (near && near.p) setPrompt(`${near.p.name}님 파티 초대`, interact);
       else setPrompt(null);
-      cam.x = Math.max(0, Math.min(WORLD.w - G.W, me.x - G.W / 2));
-      cam.y = Math.max(0, Math.min(WORLD.h - G.H, me.y - G.H / 2 - 30));
+      const bw = G.BW;
+      const bh = G.BH;
+      cam.x = bw >= TOWN_W ? -Math.floor((bw - TOWN_W) / 2) : Math.round(Math.max(0, Math.min(TOWN_W - bw, me.x - bw / 2)));
+      cam.y = bh >= TOWN_H ? -Math.floor((bh - TOWN_H) / 2) : Math.round(Math.max(0, Math.min(TOWN_H - bh, me.y - 8 - bh / 2)));
     },
     draw(c) {
       const t = G.t;
-      drawGrass(c, cam, G.W, G.H);
-      for (const p of PATHS) drawPath(c, p, cam);
-      c.save();
-      c.translate(-cam.x, -cam.y);
-      // 울타리
-      c.fillStyle = "#3f7a3a";
-      c.fillRect(0, 0, WORLD.w, 20);
-      const items = [];
-      for (const b of BUILDINGS) items.push({ y: b.y + b.h, draw: () => drawBuilding(c, b, t) });
-      for (const [x, y] of TREES) items.push({ y, draw: () => drawTree(c, x, y, 1, t) });
-      const mates = new Set(party ? party.members.map((m) => m.uid) : []);
-      for (const o of others.values())
-        items.push({
-          y: o.y,
-          draw: () => {
-            drawHero(c, o.cls, o.x, o.y, { dir: o.d, t: t + o.uid, walking: o.walking });
-            drawLabel(c, `${o.name} Lv${o.lv}`, o.x, o.y - 92, { size: 11, bg: mates.has(o.uid) ? "rgba(160,110,10,0.85)" : undefined });
-          },
-        });
-      items.push({
-        y: me.y,
-        draw: () => {
-          drawHero(c, G.me.cls, me.x, me.y, { dir: me.d, t, walking: me.walking });
-          drawLabel(c, `${G.me.name} Lv${G.me.level}`, me.x, me.y - 92, { size: 11, bg: "rgba(40,90,170,0.85)" });
-        },
-      });
+      drawGround(c, cam.x, cam.y, t);
+      const items = objects(t).map((o) => ({ y: o.y, draw: () => o.draw(c, cam.x, cam.y) }));
+      for (const o of others.values()) items.push({ y: o.y, draw: () => drawHero(c, o.cls, Math.round(o.x - cam.x), Math.round(o.y - cam.y), { dir: DIRS[o.face || 0], t: t + o.uid * 0.37, walking: o.walking }) });
+      items.push({ y: me.y, draw: () => drawHero(c, G.me.cls, Math.round(me.x - cam.x), Math.round(me.y - cam.y), { dir: DIRS[me.d], t, walking: me.walking }) });
+      if (target) {
+        const tx = Math.round(target.x - cam.x);
+        const ty = Math.round(target.y - cam.y);
+        c.save();
+        c.globalAlpha = 0.45 + Math.sin(t * 8) * 0.2;
+        oval(c, tx, ty, 4, 1, PAL.c);
+        c.globalAlpha = 1;
+        c.restore();
+      }
       items.sort((a, b) => a.y - b.y);
       for (const it of items) it.draw();
-      for (const b of BUILDINGS) if (b.name) drawLabel(c, b.name, b.x + b.w / 2, b.y - 6, { size: 13, bold: true, bg: "rgba(20,20,30,0.75)", color: "#ffe9a8" });
-      if (target) {
-        c.globalAlpha = 0.5 + Math.sin(t * 8) * 0.2;
-        c.beginPath();
-        c.ellipse(target.x, target.y, 10, 4, 0, 0, Math.PI * 2);
-        c.strokeStyle = "#fff";
-        c.lineWidth = 2;
-        c.stroke();
-        c.globalAlpha = 1;
-      }
-      c.restore();
+      drawAbove(c, cam.x, cam.y, t);
+    },
+    overlay(c) {
+      const S = G.S;
+      const sx = (x) => (x - cam.x) * S;
+      const sy = (y) => (y - cam.y) * S;
+      for (const b of PLACES) text(c, b.name, sx(b.sign.x), sy(b.sign.y), { size: 11, bold: true, color: PAL.c });
+      const mates = new Set(party ? party.members.map((m) => m.uid) : []);
+      for (const o of others.values()) text(c, `${o.name} Lv${o.lv}`, sx(o.x), sy(o.y - HERO_TOP) - 9, { size: 11, color: mates.has(o.uid) ? PAL.g : PAL.W });
+      plate(c, `${G.me.name} Lv${G.me.level}`, sx(me.x), sy(me.y - HERO_TOP) - 10, { size: 11, color: PAL.y, bg: "rgba(24,20,37,0.6)" });
     },
   };
 }
 
-export const GATE_SPAWN = { x: 800, y: 270 };
+export const GATE_SPAWN = GATE;
 export { setScene };

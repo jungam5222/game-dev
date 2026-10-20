@@ -1,11 +1,14 @@
 // 마을 창들: 던전 입구(단계), 대장간(강화), 상점(팔기), 카드 보관소(덱·합성·팩), 가방, 설정, 관리자, 던전 보상.
 import { G } from "./game.js";
 import { api } from "./net.js";
-import { $, el, modal, closeModal, toast, ask, cardTile, renderHud, itemLine, itemTitle, optText, clsIcon } from "./ui.js";
+import { $, el, modal, closeModal, toast, ask, cardTile, renderHud, itemLine, itemTitle, optText, clsIcon, icon } from "./ui.js";
 import {
   STAGES, STAGE_COUNT, MONSTERS, BOSS_DAILY, PARTY_MAX, CARDS, GRADES, SELL_PRICE, deckSize, DECK_MIN, MAX_COPIES, CLASSES, SKILLS,
   ENH_MAX, enhCost, enhChance, enhFailText, ENH_PITY, itemSellPrice, MATS, heroStats, skillText, COMBINE_MAX, PACK_ODDS,
 } from "../shared/content.js";
+
+// 장비 줄 아이콘: 내 직업의 검·지팡이·홀, 갑옷·로브·법의
+const slotIcon = (slot) => (slot === "weapon" ? "wpn_" : "arm_") + G.me.cls;
 
 async function refreshMe() {
   const m = await api("me");
@@ -57,8 +60,8 @@ async function stages(ctx) {
             "div.grow",
             {},
             el("div.t", {}, `${st.name} · 보스 ${MONSTERS[st.boss].name}`),
-            el("div.s", {}, `권장 Lv ${st.level} · 방 ${st.rooms.length}개 · 오늘 보스 보상 ${Math.max(0, BOSS_DAILY - used)}/${BOSS_DAILY}번 남음${st.n <= G.me.maxStage ? " · 깸 ✓" : ""}`),
-            locked ? el("div.s", {}, `🔒 ${st.n - 1}단계 보스를 먼저 잡아요`) : null,
+            el("div.s", {}, `권장 Lv ${st.level} · 방 ${st.rooms.length}개 · 오늘 보스 보상 ${Math.max(0, BOSS_DAILY - used)}/${BOSS_DAILY}번 남음${st.n <= G.me.maxStage ? " · 깸" : ""}`),
+            locked ? el("div.s.money", {}, icon("lock"), `${st.n - 1}단계 보스를 먼저 잡아요`) : null,
           ),
           el(
             "button.btn",
@@ -101,7 +104,7 @@ async function smithy() {
     const body = el(
       "div",
       {},
-      el("p.muted", {}, `💰 ${inv.user.gold}골드 · ${MATS.stone.icon} 강화석 ${inv.mats.stone} · ${MATS.guard_drop.icon} 하락 방지 ${inv.mats.guard_drop} · ${MATS.guard_break.icon} 파괴 방지 ${inv.mats.guard_break}`),
+      el("p.muted.money", {}, icon("mat:gold"), `${inv.user.gold}골드`, icon("mat:stone"), `강화석 ${inv.mats.stone}`, icon("mat:guard_drop"), `하락 방지 ${inv.mats.guard_drop}`, icon("mat:guard_break"), `파괴 방지 ${inv.mats.guard_break}`),
       el(
         "div.list",
         {},
@@ -109,7 +112,7 @@ async function smithy() {
           el(
             "div.li" + (x.id === sel ? ".sel" : ""),
             { on: { click: () => ((sel = x.id), (result = null), draw()) } },
-            el("div", { style: { fontSize: "22px" } }, x.slot === "weapon" ? "⚔️" : "🛡️"),
+            icon(slotIcon(x.slot), 2),
             el("div.grow", {}, el("div.t", {}, itemTitle(x), " ", x.equipped ? el("span.tag", {}, "끼는 중") : null), el("div.s", {}, itemLine(x), x.opt ? ` · 옵션 ${optText(x.opt)}` : "")),
             !x.equipped ? el("button.btn.ghost.small", { on: { click: (e) => (e.stopPropagation(), equip(x.id)) } }, "끼기") : null,
           ),
@@ -137,13 +140,13 @@ async function smithy() {
         el("div", {}, "지금", el("b", {}, itemLine(it) || "-")),
         el("div", {}, "성공하면", el("b", {}, itemLine(next))),
         el("div", {}, "성공 확률", el("b", {}, `${chance}%`), it.fails ? el("span.muted", {}, `연속 실패 ${it.fails}번 → +${it.fails * ENH_PITY}%`) : null),
-        el("div", {}, "드는 것", el("b", {}, `💰 ${cost.gold} · 💎 ${cost.stone}`)),
+        el("div", {}, "드는 것", el("b.money", {}, icon("mat:gold"), cost.gold, icon("mat:stone"), cost.stone)),
       ),
       el("p.muted", {}, enhFailText(t)),
-      t >= 6 ? el("label.chk", {}, el("input", { type: "checkbox", checked: guards.dropGuard, disabled: !inv.mats.guard_drop, on: { change: (e) => (guards.dropGuard = e.target.checked) } }), `${MATS.guard_drop.icon} 하락 방지 주문서 쓰기 (${inv.mats.guard_drop}장)`) : null,
-      t >= 14 ? el("label.chk", {}, el("input", { type: "checkbox", checked: guards.breakGuard, disabled: !inv.mats.guard_break, on: { change: (e) => (guards.breakGuard = e.target.checked) } }), `${MATS.guard_break.icon} 파괴 방지 주문서 쓰기 (${inv.mats.guard_break}장, 부서지면 두 단계 하락으로)`) : null,
+      t >= 6 ? el("label.chk", {}, el("input", { type: "checkbox", checked: guards.dropGuard, disabled: !inv.mats.guard_drop, on: { change: (e) => (guards.dropGuard = e.target.checked) } }), icon("mat:guard_drop"), `하락 방지 주문서 쓰기 (${inv.mats.guard_drop}장)`) : null,
+      t >= 14 ? el("label.chk", {}, el("input", { type: "checkbox", checked: guards.breakGuard, disabled: !inv.mats.guard_break, on: { change: (e) => (guards.breakGuard = e.target.checked) } }), icon("mat:guard_break"), `파괴 방지 주문서 쓰기 (${inv.mats.guard_break}장, 부서지면 두 단계 하락으로)`) : null,
       t >= 6 ? el("p.muted", {}, "주문서는 실제로 막아 줄 때만 없어져요.") : null,
-      el("div.row.end", {}, el("button.btn", { disabled: busy || inv.user.gold < cost.gold || inv.mats.stone < cost.stone, on: { click: () => go(it) } }, inv.user.gold < cost.gold ? "골드가 모자라요" : inv.mats.stone < cost.stone ? "강화석이 모자라요" : "🔨 강화하기")),
+      el("div.row.end", {}, el("button.btn", { disabled: busy || inv.user.gold < cost.gold || inv.mats.stone < cost.stone, on: { click: () => go(it) } }, inv.user.gold < cost.gold ? "골드가 모자라요" : inv.mats.stone < cost.stone ? "강화석이 모자라요" : "강화하기")),
       ].filter(Boolean),
     );
     return box;
@@ -154,7 +157,7 @@ async function smithy() {
       if (!(await ask(`+${it.enh + 1} 강화는 실패하면 두 단계 내려가고, 드물게 장비가 부서질 수 있어요. 할까요?`, "강화하기"))) return smithy();
     }
     busy = true;
-    result = el("div.big", {}, "🔨 …");
+    result = el("div.big.forge", {}, icon("smithy", 4));
     draw();
     try {
       const [r] = await Promise.all([api("enhance", { id: it.id, ...guards }), new Promise((res) => setTimeout(res, 700))]);
@@ -166,7 +169,7 @@ async function smithy() {
         drop2: [`실패… 두 단계 내려갔어요 (+${res.enh})`, "bad"],
         destroy: ["장비가 부서졌어요…", "bad"],
       }[res.outcome];
-      result = el("div", {}, el("div.big." + msg[1], {}, msg[0]), res.usedDrop ? el("p.muted", { style: { textAlign: "center" } }, "📜 하락 방지 주문서가 막아 줬어요.") : null, res.usedBreak ? el("p.muted", { style: { textAlign: "center" } }, "🧿 파괴 방지 주문서 덕분에 부서지지 않았어요.") : null);
+      result = el("div", {}, el("div.big." + msg[1], {}, msg[0]), res.usedDrop ? el("p.muted", { style: { textAlign: "center" } }, icon("mat:guard_drop"), "하락 방지 주문서가 막아 줬어요.") : null, res.usedBreak ? el("p.muted", { style: { textAlign: "center" } }, icon("mat:guard_break"), "파괴 방지 주문서 덕분에 부서지지 않았어요.") : null);
       if (res.outcome === "destroy") sel = null;
       inv = await api("inventory");
       await refreshMe();
@@ -211,7 +214,7 @@ async function shop() {
               return el(
                 "div.li",
                 {},
-                el("div", { style: { fontSize: "24px" } }, c.icon),
+                icon("card:" + key, 2),
                 el("div.grow", {}, el("div.t", {}, `${c.name} `, el("span.s", {}, `${GRADES[c.grade]} · ${cs.length}장`)), el("div.s", {}, `한 장 ${price}골드`)),
                 el("button.btn.ghost.small", { on: { click: () => sell([cs[0].id]) } }, `1장 팔기`),
                 cs.length > 1 ? el("button.btn.small", { on: { click: () => sell(cs.map((x) => x.id)) } }, `${cs.length}장 ${price * cs.length}골드`) : null,
@@ -228,7 +231,7 @@ async function shop() {
               el(
                 "div.li",
                 {},
-                el("div", { style: { fontSize: "22px" } }, x.slot === "weapon" ? "⚔️" : "🛡️"),
+                icon(slotIcon(x.slot), 2),
                 el("div.grow", {}, el("div.t", {}, itemTitle(x)), el("div.s", {}, itemLine(x), x.opt ? ` · 옵션 ${optText(x.opt)}` : "")),
                 el("button.btn.small", { on: { click: () => sellItem(x) } }, `${itemSellPrice(x)}골드에 팔기`),
               ),
@@ -237,7 +240,7 @@ async function shop() {
         : el("p.muted", {}, "끼지 않은 장비가 없어요.");
     }
     m.box.querySelector(".mbody").replaceChildren(
-      el("p.muted", {}, `💰 ${inv.user.gold}골드 · 카드는 팔기만 할 수 있어요. 골드는 대장간 강화에 써요.`),
+      el("p.muted.money", {}, icon("mat:gold"), `${inv.user.gold}골드 · 카드는 팔기만 할 수 있어요. 골드는 대장간 강화에 써요.`),
       tabs([["cards", "카드 팔기"], ["items", "장비 팔기"]], tab, (k) => ((tab = k), draw())),
       list,
     );
@@ -370,7 +373,7 @@ async function cards(_ctx, startTab = "deck") {
       "div",
       {},
       el("p.muted", {}, `카드 팩 하나에 내 직업 카드 5장 (일반 ${PACK_ODDS[0]}% · 고급 ${PACK_ODDS[1]}% · 희귀 ${PACK_ODDS[2]}%). 팩은 보스·매일 첫 접속에 받아요.`),
-      el("div.row", {}, el("b", {}, `${MATS.pack.icon} 카드 팩 ${inv.mats.pack}개`), el("button.btn", { disabled: !inv.mats.pack, on: { click: openPack } }, "팩 열기")),
+      el("div.row", {}, el("b.money", {}, icon("mat:pack"), `카드 팩 ${inv.mats.pack}개`), el("button.btn", { disabled: !inv.mats.pack, on: { click: openPack } }, "팩 열기")),
       packShow ? el("div.grid", { style: { marginTop: "12px" } }, ...packShow.map((k, i) => {
         const t = cardTile(k);
         t.classList.add("flip");
@@ -412,17 +415,17 @@ async function bag() {
   const s = heroStats(G.me.cls, G.me.level, eq);
   const c = CLASSES[G.me.cls];
   m.box.querySelector(".mbody").replaceChildren(
-    el("div.row", {}, el("span", { style: { fontSize: "26px" } }, clsIcon(G.me.cls)), el("b", {}, `${G.me.name} · ${c.name} Lv ${G.me.level}`), el("span.muted", {}, `경험치 ${G.me.exp}/${G.me.need}`)),
+    el("div.row", {}, clsIcon(G.me.cls, 3), el("b", {}, `${G.me.name} · ${c.name} Lv ${G.me.level}`), el("span.muted", {}, `경험치 ${G.me.exp}/${G.me.need}`)),
     el("div.stats", { style: { marginTop: "8px" } },
       el("div", {}, "체력", el("b", {}, s.maxHp)),
       el("div", {}, "공격 (카드 피해에 더함)", el("b", {}, `+${s.atk}`)),
       el("div", {}, "방어력 (맞을 때마다 뺌)", el("b", {}, s.def)),
       el("div", {}, "치명타", el("b", {}, `${s.crit}%`)),
       el("div", {}, "회피", el("b", {}, `${s.dodge}%`)),
-      el("div", {}, "골드", el("b", {}, `💰 ${inv.user.gold}`)),
+      el("div", {}, "골드", el("b.money", {}, icon("mat:gold"), inv.user.gold)),
     ),
     el("h4", {}, "재료"),
-    el("div.stats", {}, ...Object.entries(MATS).map(([k, x]) => el("div", {}, `${x.icon} ${x.name}`, el("b", {}, inv.mats[k] || 0)))),
+    el("div.stats", {}, ...Object.entries(MATS).map(([k, x]) => el("div", {}, el("span.money", {}, icon("mat:" + k), x.name), el("b", {}, inv.mats[k] || 0)))),
     el("h4", {}, "장비"),
     el(
       "div.list",
@@ -431,7 +434,7 @@ async function bag() {
         el(
           "div.li",
           {},
-          el("div", { style: { fontSize: "22px" } }, x.slot === "weapon" ? "⚔️" : "🛡️"),
+          icon(slotIcon(x.slot), 2),
           el("div.grow", {}, el("div.t", {}, itemTitle(x), " ", x.equipped ? el("span.tag", {}, "끼는 중") : null), el("div.s", {}, itemLine(x), x.opt ? ` · 옵션 ${optText(x.opt)}` : "")),
           !x.equipped
             ? el("button.btn.ghost.small", {
@@ -454,7 +457,7 @@ async function bag() {
     el("h4", {}, "직업 기술 (마나 없이 한 턴에 하나)"),
     el("div.list", {}, ...c.skills.map((k) => {
       const sk = SKILLS[k];
-      return el("div.li", { style: { cursor: "default", opacity: G.me.level >= sk.lv ? 1 : 0.5 } }, el("div", { style: { fontSize: "22px" } }, sk.icon), el("div.grow", {}, el("div.t", {}, sk.name, G.me.level < sk.lv ? ` (Lv ${sk.lv}부터)` : ""), el("div.s", {}, `${skillText(sk)} · 다시 쓰려면 ${sk.cd}턴`)));
+      return el("div.li", { style: { cursor: "default", opacity: G.me.level >= sk.lv ? 1 : 0.5 } }, icon("skill:" + k, 2), el("div.grow", {}, el("div.t", {}, sk.name, G.me.level < sk.lv ? ` (Lv ${sk.lv}부터)` : ""), el("div.s", {}, `${skillText(sk)} · 다시 쓰려면 ${sk.cd}턴`)));
     })),
   );
 }
@@ -573,19 +576,19 @@ async function admin() {
 export function showRewards(r, won, done, left = false) {
   const rows = [];
   if (r && !r.error) {
-    rows.push(el("div", {}, `✨ 경험치 +${r.exp}`, r.ups ? el("b", { style: { color: "var(--gold)" } }, `  레벨 업! Lv ${r.level}`) : null));
-    rows.push(el("div", {}, `💰 골드 +${r.gold}`));
-    if (r.stone) rows.push(el("div", {}, `${MATS.stone.icon} 강화석 +${r.stone}`));
-    if (r.pack) rows.push(el("div", {}, `${MATS.pack.icon} 카드 팩 +${r.pack}`));
-    if (r.gear) rows.push(el("div.wide", {}, `🎁 ${itemTitle(r.gear)} (${itemLine(r.gear)}${r.gear.opt ? " · 옵션 " + optText(r.gear.opt) : ""})`));
-    if (r.guardDrop) rows.push(el("div", {}, `${MATS.guard_drop.icon} 하락 방지 주문서 +1`));
-    if (r.guardBreak) rows.push(el("div", {}, `${MATS.guard_break.icon} 파괴 방지 주문서 +1`));
+    rows.push(el("div.money", {}, icon("mat:exp"), `경험치 +${r.exp}`, r.ups ? el("b", { style: { color: "var(--gold)" } }, `  레벨 업! Lv ${r.level}`) : null));
+    rows.push(el("div.money", {}, icon("mat:gold"), `골드 +${r.gold}`));
+    if (r.stone) rows.push(el("div.money", {}, icon("mat:stone"), `강화석 +${r.stone}`));
+    if (r.pack) rows.push(el("div.money", {}, icon("mat:pack"), `카드 팩 +${r.pack}`));
+    if (r.gear) rows.push(el("div.wide.money", {}, icon(r.gear.slot), `${itemTitle(r.gear)} (${itemLine(r.gear)}${r.gear.opt ? " · 옵션 " + optText(r.gear.opt) : ""})`));
+    if (r.guardDrop) rows.push(el("div.money", {}, icon("mat:guard_drop"), "하락 방지 주문서 +1"));
+    if (r.guardBreak) rows.push(el("div.money", {}, icon("mat:guard_break"), "파괴 방지 주문서 +1"));
     if (r.cards && r.cards.length) rows.push(el("div.wide", {}, "레벨 업 카드", el("div.row", { style: { marginTop: "6px" } }, ...r.cards.map((k) => cardTile(k)))));
     if (r.bossLeft === -1) rows.push(el("div.muted.wide", {}, `오늘 이 단계 보스 보상은 다 받았어요 (하루 ${BOSS_DAILY}번). 경험치·골드는 받아요.`));
     else if (r.bossLeft != null) rows.push(el("div.muted.wide", {}, `오늘 이 단계 보스 보상을 ${r.bossLeft}번 더 받을 수 있어요.`));
   } else if (r && r.error) rows.push(el("div", {}, "보상을 저장하다 문제가 생겼어요. 관리자에게 알려 주세요."));
   modal(
-    left ? "던전에서 나왔어요" : won ? "🏆 던전 클리어!" : "던전 실패",
+    left ? "던전에서 나왔어요" : won ? "던전 클리어!" : "던전 실패",
     el("div", {}, !won && !left ? el("p.muted", {}, "모두 쓰러졌어요. 그때까지 얻은 경험치·골드·강화석은 받아요.") : null, el("div.reward", {}, ...rows), el("div.row.end", {}, el("button.btn", { on: { click: done } }, "마을로"))),
     { sticky: true, onClose: null },
   );

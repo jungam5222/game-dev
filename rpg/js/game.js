@@ -46,22 +46,49 @@ export function setScene(s) {
   if (s && s.enter) s.enter();
 }
 
+// 픽셀 그림은 작은 그림판(buf)에 그린 뒤 S배로 키워 붙인다(번짐 없이). 장면마다 S가 다를 수 있다(전투 4배).
+// 글자(이름, 피해 숫자)는 그 위에 큰 그림판 좌표로 따로 쓴다(overlay).
+export const buf = document.createElement("canvas");
+export const bctx = buf.getContext("2d");
+G.S = 3;
+G.BW = 320;
+G.BH = 180;
+
 let last = performance.now();
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   G.t += dt;
-  ctx.setTransform(G.px, 0, 0, G.px, 0, 0);
-  if (G.scene) {
+  const sc = G.scene;
+  G.S = (sc && sc.S) || 3;
+  G.BW = Math.ceil(G.W / G.S);
+  G.BH = Math.ceil(G.H / G.S);
+  if (buf.width !== G.BW || buf.height !== G.BH) {
+    buf.width = G.BW;
+    buf.height = G.BH;
+  }
+  bctx.setTransform(1, 0, 0, 1, 0, 0);
+  bctx.imageSmoothingEnabled = false;
+  bctx.fillStyle = "#181425";
+  bctx.fillRect(0, 0, G.BW, G.BH);
+  if (sc) {
     try {
-      G.scene.update && G.scene.update(dt);
-      G.scene.draw && G.scene.draw(ctx);
+      sc.update && sc.update(dt);
+      sc.draw && sc.draw(bctx);
     } catch (e) {
       console.error(e);
     }
-  } else {
-    ctx.fillStyle = "#151824";
-    ctx.fillRect(0, 0, G.W, G.H);
+  }
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(buf, 0, 0, G.BW * G.S * G.px, G.BH * G.S * G.px);
+  ctx.setTransform(G.px, 0, 0, G.px, 0, 0);
+  if (sc && sc.overlay) {
+    try {
+      sc.overlay(ctx);
+    } catch (e) {
+      console.error(e);
+    }
   }
   requestAnimationFrame(frame);
 }

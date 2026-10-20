@@ -1,6 +1,8 @@
 // 화면 위에 올리는 글자·버튼(DOM): 알림, 창, 카드 모양, 위쪽 정보줄, 채팅, 파티, 방향 패드.
 import { G } from "./game.js";
 import { CLASSES, CARDS, GRADES, cardText, MATS, itemName, itemStats, OPTS } from "../shared/content.js";
+import { spriteURL } from "./pixel.js";
+import { cardIcon, skillIcon, matIcon, moveIcon, UI_ICONS, FRAMES, ARROWS, MANA_GEM } from "./art/icons.js";
 
 export const $ = (s, root = document) => root.querySelector(s);
 export function el(tag, attrs = {}, ...kids) {
@@ -55,7 +57,33 @@ export function ask(text, yes = "확인", no = "취소") {
   });
 }
 
-export const clsIcon = (cls) => ({ warrior: "🛡️", mage: "🔮", priest: "✨" })[cls] || "❔";
+// 픽셀 아이콘 <img>. name: UI 아이콘 이름, "card:키", "skill:키", "mat:키", "move:키". k = 몇 배로 키울지
+export function iconSprite(name) {
+  const [kind, key] = name.includes(":") ? name.split(":") : ["", name];
+  return kind === "card" ? cardIcon(key) : kind === "skill" ? skillIcon(key) : kind === "mat" ? matIcon(key) : kind === "move" ? moveIcon(key) : UI_ICONS[key];
+}
+export function icon(name, k = 2, title) {
+  const s = iconSprite(name);
+  if (!s) return el("span");
+  return el("img.ic", { src: spriteURL(s), width: s.w * k, height: s.h * k, alt: "", draggable: "false", title });
+}
+export const clsIcon = (cls, k = 2) => icon(cls, k);
+
+// 나무 창·양피지·버튼 테두리(9칸 나누기 그림)를 CSS 변수로 넣는다. 한 픽셀 = 3px (작은 화면 2px)
+export function applyFrames() {
+  const px = Math.min(window.innerWidth, window.innerHeight) < 520 ? 2 : 3;
+  const root = document.documentElement.style;
+  root.setProperty("--px", px + "px");
+  for (const [k, f] of Object.entries(FRAMES)) {
+    if (!f || !f.s) continue;
+    root.setProperty(`--f-${k}`, `url(${spriteURL(f.s)}) ${f.slice} fill / ${f.slice * px}px ${f.repeat || "stretch"}`);
+    root.setProperty(`--fw-${k}`, `${f.slice * px}px`);
+  }
+  if (MANA_GEM) root.setProperty("--mana-gem", `url(${spriteURL(MANA_GEM)})`);
+  if (ARROWS) for (const d of ["up", "down", "left", "right"]) if (ARROWS[d]) root.setProperty(`--arrow-${d}`, `url(${spriteURL(ARROWS[d])})`);
+  // data-ic="이름"이 붙은 버튼에 아이콘 넣기
+  for (const b of document.querySelectorAll("[data-ic]")) if (!b.querySelector(".ic")) b.prepend(icon(b.dataset.ic, 2));
+}
 
 // 카드 한 장
 export function cardTile(key, o = {}) {
@@ -65,7 +93,7 @@ export function cardTile(key, o = {}) {
     `div.card.g${c.grade}`,
     { title: `${c.name} (${GRADES[c.grade]}) — ${cardText(c)}`, on: o.onClick ? { click: o.onClick } : null },
     el("div.cost", {}, c.cost),
-    el("div.icon", {}, c.icon),
+    el("div.icon", {}, icon("card:" + key, 3)),
     el("div.cname", {}, c.name),
     el("div.ctext", {}, cardText(c)),
     o.badge != null ? el("div.badge", {}, o.badge) : null,
@@ -98,7 +126,7 @@ export function renderHud() {
   hud.replaceChildren(
     el("div.who", {}, el("span.cls", {}, clsIcon(u.cls)), el("b", {}, u.name), el("span.lv", {}, `Lv ${u.level}`), el("span.sub", {}, CLASSES[u.cls] ? CLASSES[u.cls].name : "")),
     el("div.exp", { title: `경험치 ${u.exp} / ${u.need}` }, el("div", { style: { width: `${Math.min(100, (100 * u.exp) / u.need)}%` } })),
-    el("div.money", {}, el("span", { title: "골드" }, `💰 ${u.gold}`), el("span", { title: MATS.stone.name }, `${MATS.stone.icon} ${G.mats.stone}`), el("span", { title: MATS.pack.name }, `${MATS.pack.icon} ${G.mats.pack}`)),
+    el("div.money", {}, el("span", { title: "골드" }, icon("mat:gold"), u.gold), el("span", { title: MATS.stone.name }, icon("mat:stone"), G.mats.stone), el("span", { title: MATS.pack.name }, icon("mat:pack"), G.mats.pack)),
   );
 }
 
