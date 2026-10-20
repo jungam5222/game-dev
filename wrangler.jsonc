@@ -1,10 +1,23 @@
 {
   "name": "game-dev",
   "compatibility_date": "2026-10-01",
-  // /api/* 는 worker.js (순위 서버), 나머지는 정적 파일
+  // /api/* 는 worker.js (순위 서버, /api/rpg/* 는 던전 RPG 서버), 나머지는 정적 파일
   "main": "worker.js",
   "assets": { "directory": "./", "binding": "ASSETS", "run_worker_first": ["/api/*"] },
-  "durable_objects": { "bindings": [{ "name": "BOARD", "class_name": "Board" }] },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Board"] }],
+  "durable_objects": {
+    "bindings": [
+      { "name": "BOARD", "class_name": "Board" },
+      { "name": "RPG_TOWN", "class_name": "RpgTown" },
+      { "name": "RPG_DUNGEON", "class_name": "RpgDungeon" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["Board"] },
+    { "tag": "v2", "new_sqlite_classes": ["RpgTown", "RpgDungeon"] }
+  ],
+  // 던전 RPG 계정 데이터 (사용자가 Cloudflare에서 만든 D1 "rpg", 2026-10-20)
+  "d1_databases": [{ "binding": "RPG_DB", "database_name": "rpg", "database_id": "b7dadd55-08e4-47a8-8102-0f8c6ebede44" }],
+  // 던전 RPG 관리자 로그인 아이디
+  "vars": { "RPG_ADMIN": "jungam5222" },
   "previews": {}
 }

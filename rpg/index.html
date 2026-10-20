@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#151824">
+<title>던전 RPG</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%9A%94%EF%B8%8F%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="cv"></canvas>
+
+<div id="townui" class="layer" hidden>
+  <div id="hud"></div>
+  <div id="menu">
+    <button data-open="bag" title="가방">🎒<span>가방</span></button>
+    <button data-open="cards" title="카드">🃏<span>카드</span></button>
+    <button data-open="settings" title="설정">⚙️<span>설정</span></button>
+    <button data-open="admin" id="adminbtn" title="관리자" hidden>🛠️<span>관리</span></button>
+  </div>
+  <div id="party"></div>
+  <div id="ann"></div>
+  <div id="prompt" hidden></div>
+  <div id="invite" hidden></div>
+</div>
+
+<div id="dungeonui" class="layer" hidden>
+  <div id="dtop"></div>
+  <div id="battle" hidden>
+    <div id="bleft"><div id="mana"></div><div id="piles"></div></div>
+    <div id="hand"></div>
+    <div id="bright"><div id="skills"></div><button id="endturn" class="btn">턴 끝</button></div>
+  </div>
+</div>
+
+<div id="chat" hidden>
+  <div id="chatlog"></div>
+  <div class="chatrow"><button id="chatbtn" aria-label="채팅">💬</button><input id="chatin" maxlength="120" placeholder="Enter 키로 채팅" autocomplete="off" enterkeyhint="send"></div>
+</div>
+<div id="dpad" hidden>
+  <button data-k="up" aria-label="위">▲</button>
+  <button data-k="left" aria-label="왼쪽">◀</button>
+  <button data-k="right" aria-label="오른쪽">▶</button>
+  <button data-k="down" aria-label="아래">▼</button>
+</div>
+<div id="screen"></div>
+<div id="modal-root"></div>
+<div id="toasts"></div>
+<noscript>자바스크립트를 켜야 할 수 있어요.</noscript>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

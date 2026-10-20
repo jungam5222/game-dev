@@ -13,6 +13,10 @@ import { DurableObject } from "cloudflare:workers";
 import Anthropic from "@anthropic-ai/sdk";
 import ANSWERS_GZ from "./server/answers.bin";
 import { norm, makeMatcher, candidates } from "./server/matcher.js";
+// /api/rpg/* 는 두 번째 게임(던전 RPG, game.yunmin.dev/rpg/)의 계정·마을·던전 서버 (2026-10-20)
+import { rpgApi } from "./server/rpg/api.js";
+export { RpgTown } from "./server/rpg/town.js";
+export { RpgDungeon } from "./server/rpg/dungeon.js";
 
 const BOARD = /^(d:\d{4}-\d{2}-\d{2}|s:[1-9]\d?)$/;
 const PLAYER = /^[A-Za-z0-9_-]{8,40}$/;
@@ -339,6 +343,14 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(request);
+    if (url.pathname.startsWith("/api/rpg/")) {
+      try {
+        return await rpgApi(request, env, url);
+      } catch (e) {
+        console.error("rpg", e);
+        return json({ error: "서버에 문제가 생겼어요. 잠시 뒤에 다시 해 주세요." }, 500);
+      }
+    }
     if (!["/api/score", "/api/judge", "/api/list", "/api/found", "/api/status", "/api/selftest"].includes(url.pathname)) return json({ error: "not_found" }, 404);
     if (url.pathname === "/api/status") return json({ claude: !!env.ANTHROPIC_API_KEY });
     if (url.pathname === "/api/selftest") return json(await selfTest(env, request));
