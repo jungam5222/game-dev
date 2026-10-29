@@ -33,7 +33,11 @@ const PRICE = { "claude-sonnet-5-5": [2, 10], "claude-opus-5-5": [4, 20] };
 const PRICE_UNKNOWN = [5, 25];
 // 판정 기준을 바꾸면 올린다. 저장된 옛 판정은 쓰지 않고 다시 묻는다 (2: 2026-10-20 엄격하게, 오타는 고치기 버튼)
 const CHECK_VERSION = "v2";
-const FAM_SCORE = { 5: 10, 4: 30, 3: 60, 2: 85, 1: 100 }; // build.py score_freq와 같은 기준
+// build.py FAM_TIER와 같은 기준. 2026-10-29 사용자 요청(난이도 올리기)으로 4·3·2를 한 등급씩 내림.
+const FAM_SCORE = { 5: 10, 4: 10, 3: 30, 2: 60, 1: 100 };
+// 그 전에 저장한 새 답 점수(scale 없음)를 새 기준으로 바꾼다. Claude를 다시 부르지 않으려고.
+const OLD_SCORE = { 10: 10, 30: 10, 60: 30, 85: 60, 100: 100 };
+const SCORE_SCALE = 2;
 
 export class Board extends DurableObject {
   constructor(ctx, env) {
@@ -203,7 +207,7 @@ function promptFor(entry, raw) {
     // 2026-10-20 사용자: 너무 후하다 (빨간독개구리 → 독화살개구리, 쓰레기열 → 폐기물 에너지로 인정됨)
     "1. 플레이어 답이 정답 목록의 어떤 답과 같은 낱말일 때만 same에 그 답을 목록에 적힌 그대로 적어. 같은 낱말이란 글자 한두 개가 틀린 오타, 널리 쓰는 다른 이름이나 줄임말(예: 아구찜=아귀찜)이야. 뜻이 비슷하거나 그럴듯하게 지어 붙인 다른 말은 같은 낱말이 아니야(예: 빨간독개구리는 독화살개구리가 아니고, 쓰레기열은 폐기물 에너지가 아니야). 플레이어가 무엇을 뜻했을지 짐작해서 맞춰 주지 마. 아니면 same은 빈 글자.",
     "2. 아니면 이 문제의 정답으로 맞는지 판단해. 그 이름 그대로 실제로 쓰이는 말이고 문제와 규칙에 맞을 때만 ok를 true로 해. 그럴듯하게 지어낸 말, 있을 것 같아서 대충 붙인 이름, 실제로 쓰지 않는 조합, 범위가 다른 것, 답을 여러 개 적은 것은 false야. 확실하지 않으면 false.",
-    "3. ok가 true면 fam에 한국 사람들이 그 말을 얼마나 쓰고 떠올리는지(한국 문화 기준, 애호가 기준 아님)를 매겨: 5 누구나 바로 떠올림, 4 널리 알려짐, 3 대부분 알지만 잘 안 떠올림, 2 일부만 앎, 1 아는 사람이 드묾. 점수는 5→10, 4→30, 3→60, 2→85, 1→100이야. 정답 목록의 점수와 견주어 맞춰. ok가 false면 fam은 아무 값이나.",
+    "3. ok가 true면 fam에 한국 사람들이 그 말을 얼마나 쓰고 떠올리는지(한국 문화 기준, 애호가 기준 아님)를 매겨: 5 누구나 바로 떠올림, 4 널리 알려짐, 3 대부분 알지만 잘 안 떠올림, 2 일부만 앎, 1 아는 사람이 드묾. 점수는 5→10, 4→10, 3→30, 2→60, 1→100이야. 정답 목록의 점수와 견주어 맞춰. ok가 false면 fam은 아무 값이나.",
     "4. name에는 그것의 표준 한국어 이름, why에는 플레이어에게 보여 줄 이유를 존댓말 한 문장(40자 안쪽)으로 적어.",
   );
   return lines.join("\n");
@@ -256,7 +260,7 @@ function fromVerdict(id, entry, raw, v) {
       if (canon) return { score: 0, kind: "suggest", canon, via: "claude" };
       if (how === "rejected") return judge(id, entry, name);
     }
-    return { score: FAM_SCORE[v.fam] || 85, kind: "new", canon: name || raw, via: "claude" };
+    return { score: FAM_SCORE[v.fam] || 60, kind: "new", canon: name || raw, via: "claude", scale: SCORE_SCALE };
   }
   return { score: 0, kind: "rejected", why: text(v.why) || "이 문제의 답으로 보기 어려워요.", via: "claude" };
 }
@@ -297,7 +301,10 @@ async function checkOffList(env, request, id, entry, raw) {
   const key = CHECK_VERSION + ":" + n;
   const stub = env.BOARD.get(env.BOARD.idFromName("main"));
   const saved = await stub.getCheck(id, key);
-  if (saved) return saved;
+  if (saved) {
+    if (saved.kind === "new" && saved.scale !== SCORE_SCALE) return { ...saved, score: OLD_SCORE[saved.score] ?? saved.score, scale: SCORE_SCALE };
+    return saved;
+  }
   const failed = (why) => ({ score: 0, kind: "unknown", why });
   if (!(await stub.reserve(kstDay(), await ipKey(request)))) return failed("오늘은 실시간 채점 한도를 다 써서 채점하지 못했어요.");
   const started = Date.now();
